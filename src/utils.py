@@ -6,6 +6,7 @@ import io
 import sys
 import time
 import json
+import requests
 from typing import Optional, Sequence, Union
 
 import openai
@@ -14,7 +15,6 @@ from openai import openai_object
 import copy
 
 StrOrOpenAIObject = Union[str, openai_object.OpenAIObject]
-
 
 openai_org = os.getenv("OPENAI_ORG")
 if openai_org is not None:
@@ -32,43 +32,169 @@ class OpenAIDecodingArguments(object):
     stop: Optional[Sequence[str]] = None
     presence_penalty: float = 0.0
     frequency_penalty: float = 0.0
-    # logprobs: Optional[int] = None
+
+
+@dataclasses.dataclass
+class CustomAPIConfig(object):
+    """Configuration for custom API endpoints like SiliconFlow"""
+    api_url: str = None
+    api_key: str = None
+    model_name: str = None
+    use_custom_api: bool = False
+
+
+def custom_api_completion(
+        prompts,
+        decoding_args: OpenAIDecodingArguments,
+        api_config: CustomAPIConfig,
+        sleep_time=2,
+        max_retries=3,
+        **decoding_kwargs,
+):
+    """
+    Custom API completion for SiliconFlow or other OpenAI-compatible APIs
+    """
+    is_single_prompt = isinstance(prompts, (str, dict))
+    if is_single_prompt:
+        prompts = [prompts]
+
+    completions = []
+
+    for prompt in prompts:
+        backoff = max_retries
+
+        while True:
+            try:
+                # Prepare messages for chat format
+                if isinstance(prompt, str):
+                    messages = [
+                        {"role": "system", "content": "You are a helpful assistant."},
+                        {"role": "user", "content": prompt}
+                    ]
+                elif isinstance(prompt, dict):
+                    messages = [prompt]
+                else:
+                    messages = prompt
+
+                # Prepare payload
+                payload = {
+                    "model": api_config.model_name,
+                    "messages": messages,
+                    "max_tokens": decoding_args.max_tokens,
+                    "temperature": decoding_args.temperature,
+                    "top_p": decoding_args.top_p,
+                    "n": decoding_args.n,
+                }
+
+                # Add optional parameters
+                if decoding_args.stop:
+                    payload["stop"] = decoding_args.stop
+                if decoding_args.presence_penalty:
+                    payload["presence_penalty"] = decoding_args.presence_penalty
+                if decoding_args.frequency_penalty:
+                    payload["frequency_penalty"] = decoding_args.frequency_penalty
+
+                # Add any additional kwargs
+                payload.update(decoding_kwargs)
+
+                headers = {
+                    "Authorization": f"Bearer {api_config.api_key}",
+                    "Content-Type": "application/json"
+                }
+
+                print(f"Making request to: {api_config.api_url}")
+                print(f"Model: {api_config.model_name}")
+                print(f"Payload keys: {list(payload.keys())}")
+
+                response = requests.post(
+                    api_config.api_url,
+                    json=payload,
+                    headers=headers,
+                    timeout=60
+                )
+
+                response.raise_for_status()
+                response_data = response.json()
+
+                print(f"Response status: {response.status_code}")
+                print(f"Response keys: {list(response_data.keys())}")
+
+                # Convert to OpenAI-like format for compatibility
+                if "choices" in response_data:
+                    for choice in response_data["choices"]:
+                        # Create a mock OpenAI choice object
+                        mock_choice = type('MockChoice', (), {})()
+
+                        if "message" in choice:
+                            mock_choice.message = {"content": choice["message"]["content"]}
+                        elif "text" in choice:
+                            mock_choice.message = {"content": choice["text"]}
+                        else:
+                            mock_choice.message = {"content": str(choice)}
+
+                        # Add usage info if available
+                        if "usage" in response_data:
+                            mock_choice.total_tokens = response_data["usage"].get("total_tokens", 0)
+                        else:
+                            mock_choice.total_tokens = 0
+
+                        completions.append(mock_choice)
+                else:
+                    # Fallback if response format is different
+                    mock_choice = type('MockChoice', (), {})()
+                    mock_choice.message = {"content": str(response_data)}
+                    mock_choice.total_tokens = 0
+                    completions.append(mock_choice)
+
+                break
+
+            except requests.exceptions.RequestException as e:
+                logging.warning(f"Request error: {e}")
+                if not backoff:
+                    logging.error("Hit too many failures, exiting")
+                    raise e
+                else:
+                    backoff -= 1
+                    logging.warning("Request failed, retrying...")
+                    time.sleep(sleep_time)
+            except Exception as e:
+                logging.warning(f"API error: {e}")
+                if not backoff:
+                    logging.error("Hit too many failures, exiting")
+                    raise e
+                else:
+                    backoff -= 1
+                    logging.warning("API call failed, retrying...")
+                    time.sleep(sleep_time)
+
+    if is_single_prompt:
+        return completions[0] if completions else None
+    return completions
 
 
 def openai_completion(
-    prompts, #: Union[str, Sequence[str], Sequence[dict[str, str]], dict[str, str]],
-    decoding_args: OpenAIDecodingArguments,
-    model_name="text-davinci-003",
-    sleep_time=2,
-    batch_size=1,
-    max_instances=sys.maxsize,
-    max_batches=sys.maxsize,
-    return_text=False,
-    **decoding_kwargs,
+        prompts,
+        decoding_args: OpenAIDecodingArguments,
+        model_name="text-davinci-003",
+        sleep_time=2,
+        batch_size=1,
+        max_instances=sys.maxsize,
+        max_batches=sys.maxsize,
+        return_text=False,
+        custom_api_config: CustomAPIConfig = None,
+        **decoding_kwargs,
 ) -> Union[Union[StrOrOpenAIObject], Sequence[StrOrOpenAIObject], Sequence[Sequence[StrOrOpenAIObject]],]:
-    """Decode with OpenAI API.
-
-    Args:
-        prompts: A string or a list of strings to complete. If it is a chat model the strings should be formatted
-            as explained here: https://github.com/openai/openai-python/blob/main/chatml.md. If it is a chat model
-            it can also be a dictionary (or list thereof) as explained here:
-            https://github.com/openai/openai-cookbook/blob/main/examples/How_to_format_inputs_to_ChatGPT_models.ipynb
-        decoding_args: Decoding arguments.
-        model_name: Model name. Can be either in the format of "org/model" or just "model".
-        sleep_time: Time to sleep once the rate-limit is hit.
-        batch_size: Number of prompts to send in a single request. Only for non chat model.
-        max_instances: Maximum number of prompts to decode.
-        max_batches: Maximum number of batches to decode. This argument will be deprecated in the future.
-        return_text: If True, return text instead of full completion object (which contains things like logprob).
-        decoding_kwargs: Additional decoding arguments. Pass in `best_of` and `logit_bias` if you need them.
-
-    Returns:
-        A completion or a list of completions.
-        Depending on return_text, return_openai_object, and decoding_args.n, the completion type can be one of
-            - a string (if return_text is True)
-            - an openai_object.OpenAIObject object (if return_text is False)
-            - a list of objects of the above types (if decoding_args.n > 1)
     """
+    Enhanced decode function supporting both OpenAI and custom APIs
+    """
+    # Check if using custom API
+    if custom_api_config and custom_api_config.use_custom_api:
+        print("Using custom API endpoint...")
+        return custom_api_completion(
+            prompts, decoding_args, custom_api_config, sleep_time, **decoding_kwargs
+        )
+
+    # Original OpenAI API logic
     is_chat_model = "gpt-3.5" in model_name or "gpt-4" in model_name
     is_single_prompt = isinstance(prompts, (str, dict))
     if is_single_prompt:
@@ -84,17 +210,17 @@ def openai_completion(
     prompts = prompts[:max_instances]
     num_prompts = len(prompts)
     prompt_batches = [
-        prompts[batch_id * batch_size : (batch_id + 1) * batch_size]
+        prompts[batch_id * batch_size: (batch_id + 1) * batch_size]
         for batch_id in range(int(math.ceil(num_prompts / batch_size)))
     ]
 
     completions = []
     for batch_id, prompt_batch in tqdm.tqdm(
-        enumerate(prompt_batches),
-        desc="prompt_batches",
-        total=len(prompt_batches),
+            enumerate(prompt_batches),
+            desc="prompt_batches",
+            total=len(prompt_batches),
     ):
-        batch_decoding_args = copy.deepcopy(decoding_args)  # cloning the decoding_args
+        batch_decoding_args = copy.deepcopy(decoding_args)
 
         backoff = 3
 
@@ -133,15 +259,13 @@ def openai_completion(
                 else:
                     backoff -= 1
                     logging.warning("Hit request rate limit; retrying...")
-                    time.sleep(sleep_time)  # Annoying rate limit on requests.
+                    time.sleep(sleep_time)
 
     if return_text:
         completions = [completion.text for completion in completions]
     if decoding_args.n > 1:
-        # make completions a nested list, where each entry is a consecutive decoding_args.n of original entries.
-        completions = [completions[i : i + decoding_args.n] for i in range(0, len(completions), decoding_args.n)]
+        completions = [completions[i: i + decoding_args.n] for i in range(0, len(completions), decoding_args.n)]
     if is_single_prompt:
-        # Return non-tuple if only 1 input and 1 generation.
         (completions,) = completions
     return completions
 
@@ -152,4 +276,4 @@ def write_ans_to_file(ans_data, file_prefix, output_dir="./output"):
     filename = os.path.join(output_dir, file_prefix + ".txt")
     with open(filename, "w") as f:
         for ans in ans_data:
-            f.write(ans + "\n")
+            f.write(str(ans) + "\n")

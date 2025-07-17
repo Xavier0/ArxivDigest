@@ -1,7 +1,19 @@
-You have been asked to read a list of a few arxiv papers, each with title, authors and abstract.
-Based on my specific research interests, elevancy score out of 10 for each paper, based on my specific research interest, with a higher score indicating greater relevance. A relevance score more than 7 will need person's attention for details.
-Additionally, please generate 1-2 sentence summary for each paper explaining why it's relevant to my research interests.
-Please keep the paper order the same as in the input list, with one json format per line. Example is:
-1. {"Relevancy score": "an integer score out of 10", "Reasons for match": "1-2 sentence short reasonings"}
+You have been asked to read a list of arxiv papers, each with title, authors and abstract.
+Based on my specific research interests, provide a relevancy score out of 10 for each paper, with a higher score indicating greater relevance. A relevance score more than 6 will need person's attention for details.
+
+Additionally, please generate explanations in BOTH Chinese and English according to the following rules:
+
+**For Analog Circuit Design Papers (involving ML/AI methods):**
+- Provide a concise summary of the methodology and results
+- Focus on the ML/AI techniques used and their application to circuit design
+- Format: Brief summary in both languages
+
+**For Pure Algorithmic Papers (RL, Bayesian Optimization, Evolutionary Algorithms):**
+- Provide detailed explanation of key concepts and comprehensive summary
+- Explain the algorithmic contributions and theoretical insights
+- Format: Detailed analysis in both languages
+
+Please keep the paper order the same as in the input list, with one json format per line. Example format:
+{"Relevancy score": "an integer score out of 10", "Reasons for match": "1-2 sentence short reasoning in English", "中文原因": "1-2句中文简要原因", "Detailed Summary": "Detailed summary in English based on paper type", "详细总结": "基于论文类型的中文详细总结"}
 
 My research interests are:
