@@ -110,7 +110,7 @@ def custom_api_completion(
                     api_config.api_url,
                     json=payload,
                     headers=headers,
-                    timeout=60
+                    timeout=120  # 增加到2分钟
                 )
 
                 response.raise_for_status()

@@ -43,7 +43,30 @@ def check_environment():
         print("  CUSTOM_API_KEY=your-siliconflow-api-key")
         return False
 
-    print("✅ 环境变量检查通过")
+    print("✅ API环境变量检查通过")
+
+    # 检查邮件配置（可选）
+    mail_connection = os.environ.get("MAIL_CONNECTION")
+    mail_username = os.environ.get("MAIL_USERNAME")
+    mail_password = os.environ.get("MAIL_PASSWORD")
+    from_email = os.environ.get("FROM_EMAIL")
+    to_email = os.environ.get("TO_EMAIL")
+    sendgrid_key = os.environ.get("SENDGRID_API_KEY")
+
+    has_email_config = bool(sendgrid_key or mail_connection or (mail_username and mail_password))
+    has_email_addresses = bool(from_email and to_email)
+
+    if has_email_config and has_email_addresses:
+        if sendgrid_key:
+            print("✅ SendGrid邮件配置检查通过")
+        elif mail_connection:
+            print("✅ SMTP连接字符串配置检查通过")
+        elif mail_username and mail_password:
+            print("✅ SMTP用户密码配置检查通过")
+    else:
+        print("⚠️  未检测到邮件配置（可选功能）")
+        print("   如需邮件功能，请参考SMTP配置指南")
+
     return True
 
 
@@ -57,7 +80,8 @@ def check_files():
         "src/relevancy.py",
         "src/utils.py",
         "src/relevancy_prompt.txt",
-        "test_api.py"
+        "test_api.py",
+        "test_smtp.py"
     ]
 
     missing_files = []
@@ -168,6 +192,47 @@ def run_full_digest():
         return False
 
 
+def test_smtp_if_configured():
+    """如果配置了SMTP，进行测试"""
+    mail_connection = os.environ.get("MAIL_CONNECTION")
+    mail_username = os.environ.get("MAIL_USERNAME")
+    mail_password = os.environ.get("MAIL_PASSWORD")
+    from_email = os.environ.get("FROM_EMAIL")
+    to_email = os.environ.get("TO_EMAIL")
+
+    has_smtp_config = bool(mail_connection or (mail_username and mail_password))
+    has_email_addresses = bool(from_email and to_email)
+
+    if not has_smtp_config or not has_email_addresses:
+        return True  # 如果没配置SMTP，跳过测试
+
+    print("📧 检测到SMTP配置，进行邮件测试...")
+
+    try:
+        result = subprocess.run([sys.executable, "test_smtp.py"],
+                                capture_output=True, text=True, timeout=60)
+
+        if result.returncode == 0:
+            print("✅ SMTP配置测试通过")
+            # 显示关键信息
+            lines = result.stdout.split('\n')
+            for line in lines:
+                if any(keyword in line for keyword in ['✅', '❌', '📧', '🖥️']):
+                    print(f"  {line}")
+            return True
+        else:
+            print("⚠️ SMTP配置测试失败，但可以继续运行（邮件功能不可用）")
+            print("如需邮件功能，请检查SMTP配置")
+            return True  # 不阻止主要功能
+
+    except subprocess.TimeoutExpired:
+        print("⚠️ SMTP测试超时，跳过邮件功能")
+        return True
+    except Exception as e:
+        print(f"⚠️ SMTP测试错误: {e}")
+        return True
+
+
 def main():
     """主函数"""
     print_banner()
@@ -197,17 +262,25 @@ def main():
 
     print("\n" + "=" * 60)
 
-    # 步骤5: 询问是否运行完整digest
-    response = input("\n🤔 API测试通过！是否运行完整的ArXiv Digest? (y/n): ").lower().strip()
+    # 步骤5: SMTP测试（如果配置了）
+    test_smtp_if_configured()
+
+    print("\n" + "=" * 60)
+
+    # 步骤6: 询问是否运行完整digest
+    response = input("\n🤔 测试通过！是否运行完整的ArXiv Digest? (y/n): ").lower().strip()
 
     if response in ['y', 'yes', '是', '好']:
         if run_full_digest():
             print("\n🎉 恭喜！ArXiv Digest设置和测试完成！")
             print("\n📋 接下来您可以:")
             print("  1. 打开 digest.html 查看结果")
-            print("  2. 修改 config.yaml 调整配置")
-            print("  3. 设置定时任务自动运行")
-            print("  4. 配置邮件发送功能")
+            print("  2. 检查邮箱是否收到邮件（如果配置了）")
+            print("  3. 修改 config.yaml 调整配置")
+            print("  4. 设置定时任务自动运行")
+            print("\n📧 邮件功能配置:")
+            print("  - 参考 'SMTP邮件配置指南' 设置邮件发送")
+            print("  - 运行 'python test_smtp.py' 测试邮件配置")
             return True
         else:
             print("\n⚠️ 完整运行失败，但API配置正确")
@@ -216,6 +289,8 @@ def main():
     else:
         print("\n✅ 设置完成！您可以稍后手动运行:")
         print("  python src/action.py --config config.yaml")
+        print("\n📧 如需配置邮件功能:")
+        print("  python test_smtp.py  # 测试SMTP配置")
         return True
 
 
