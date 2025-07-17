@@ -36,14 +36,22 @@ class MockOpenAIChoice:
     def __init__(self, content="", total_tokens=0):
         self.message = {"content": content}
         self.total_tokens = total_tokens
-        # 支持字典式访问
-        self._data = {"total_tokens": total_tokens}
+        # 支持字典式访问 - 包含所有必要的键
+        self._data = {
+            "total_tokens": total_tokens,
+            "message": {"content": content}
+        }
 
     def __getitem__(self, key):
         return self._data[key]
 
     def __setitem__(self, key, value):
         self._data[key] = value
+        # 同时更新对象属性以保持一致性
+        if key == "message":
+            self.message = value
+        elif key == "total_tokens":
+            self.total_tokens = value
 
 
 StrOrOpenAIObject = Union[str, MockOpenAIChoice]
@@ -155,30 +163,25 @@ def custom_api_completion(
                 if "choices" in response_data:
                     for choice in response_data["choices"]:
                         # Create a mock OpenAI choice object for compatibility
-                        mock_choice = MockOpenAIChoice()
-
                         if "message" in choice:
-                            mock_choice.message = {"content": choice["message"]["content"]}
+                            content = choice["message"]["content"]
                         elif "text" in choice:
-                            mock_choice.message = {"content": choice["text"]}
+                            content = choice["text"]
                         else:
-                            mock_choice.message = {"content": str(choice)}
+                            content = str(choice)
 
-                        # Add usage info if available
+                        # Get usage info if available
+                        total_tokens = 0
                         if "usage" in response_data:
-                            mock_choice.total_tokens = response_data["usage"].get("total_tokens", 0)
-                            mock_choice["total_tokens"] = response_data["usage"].get("total_tokens", 0)
-                        else:
-                            mock_choice.total_tokens = 0
-                            mock_choice["total_tokens"] = 0
+                            total_tokens = response_data["usage"].get("total_tokens", 0)
+
+                        # Create mock choice with proper initialization
+                        mock_choice = MockOpenAIChoice(content=content, total_tokens=total_tokens)
 
                         completions.append(mock_choice)
                 else:
                     # Fallback if response format is different
-                    mock_choice = MockOpenAIChoice()
-                    mock_choice.message = {"content": str(response_data)}
-                    mock_choice.total_tokens = 0
-                    mock_choice["total_tokens"] = 0
+                    mock_choice = MockOpenAIChoice(content=str(response_data), total_tokens=0)
                     completions.append(mock_choice)
 
                 break
