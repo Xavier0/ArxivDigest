@@ -22,6 +22,32 @@ from typing import List, Union
 # Hackathon quality code. Don't judge too harshly.
 # Feel free to submit pull requests to improve the code.
 
+def parse_email_addresses(email_string: str) -> List[str]:
+    """
+    解析邮箱地址字符串，支持多种分隔符
+    """
+    if not email_string:
+        return []
+
+    # 用正则表达式分割，支持逗号、分号、空格作为分隔符
+    emails = re.split(r'[,;\s]+', email_string.strip())
+
+    # 过滤空字符串并去除前后空格
+    emails = [email.strip() for email in emails if email.strip()]
+
+    # 简单的邮箱格式验证
+    valid_emails = []
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+    for email in emails:
+        if email_pattern.match(email):
+            valid_emails.append(email)
+        else:
+            print(f"⚠️ 跳过无效邮箱地址: {email}")
+
+    return valid_emails
+
+
 topics = {
     "Physics": "",
     "Mathematics": "math",
@@ -669,29 +695,3 @@ if __name__ == "__main__":
         print("🧪 Test mode completed - processed only 1 paper for functionality verification")
 
     print("=" * 60)
-
-
-def parse_email_addresses(email_string: str) -> List[str]:
-    """
-    解析邮箱地址字符串，支持多种分隔符
-    """
-    if not email_string:
-        return []
-
-    # 用正则表达式分割，支持逗号、分号、空格作为分隔符
-    emails = re.split(r'[,;\s]+', email_string.strip())
-
-    # 过滤空字符串并去除前后空格
-    emails = [email.strip() for email in emails if email.strip()]
-
-    # 简单的邮箱格式验证
-    valid_emails = []
-    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
-
-    for email in emails:
-        if email_pattern.match(email):
-            valid_emails.append(email)
-        else:
-            print(f"⚠️ 跳过无效邮箱地址: {email}")
-
-    return valid_emails

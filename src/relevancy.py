@@ -41,6 +41,22 @@ def post_process_chat_gpt_response(paper_data, response, threshold_score=6):
         return [], True
 
     response_content = response['message']['content'].replace("\n\n", "\n")
+
+    # 清理响应内容，移除markdown代码块标记
+    response_content = response_content.strip()
+
+    # 移除 ```json 和 ``` 标记
+    if response_content.startswith('```json'):
+        response_content = response_content[7:]  # 移除 '```json'
+    if response_content.startswith('```'):
+        response_content = response_content[3:]  # 移除 '```'
+    if response_content.endswith('```'):
+        response_content = response_content[:-3]  # 移除结尾的 '```'
+
+    response_content = response_content.strip()
+
+    print(f"Cleaned response content: {response_content[:200]}...")  # Debug info
+
     json_items = response_content.split("\n")
 
     # Pattern to remove numbering and quotes
@@ -48,32 +64,62 @@ def post_process_chat_gpt_response(paper_data, response, threshold_score=6):
 
     import pprint
     try:
-        # Extract lines that look like JSON
-        json_lines = [line for line in json_items if any(key in line.lower() for key in
-                     ["relevancy score", "reasons for match", "中文原因", "detailed summary", "详细总结"])]
+        # 首先尝试直接解析整个响应为JSON
+        if response_content.startswith('{') and response_content.endswith('}'):
+            try:
+                single_json = json.loads(response_content)
+                score_items = [single_json]
+                print(f"Successfully parsed single JSON response")
+            except json.JSONDecodeError:
+                # 如果单个JSON解析失败，尝试逐行解析
+                score_items = []
+                # Extract lines that look like JSON
+                json_lines = [line for line in json_items if any(key in line.lower() for key in
+                                                                 ["relevancy score", "reasons for match", "中文原因",
+                                                                  "detailed summary", "详细总结"])]
 
-        score_items = []
-        for line in json_lines:
-            cleaned_line = re.sub(pattern, "", line).strip()
-            if cleaned_line and (cleaned_line.startswith('{') or '"relevancy score"' in cleaned_line.lower()):
-                try:
-                    # Handle cases where line might not be complete JSON
-                    if not cleaned_line.endswith('}'):
-                        # Try to find the next part
+                for line in json_lines:
+                    cleaned_line = re.sub(pattern, "", line).strip()
+                    if cleaned_line and (cleaned_line.startswith('{') or '"relevancy score"' in cleaned_line.lower()):
+                        try:
+                            # Handle cases where line might not be complete JSON
+                            if not cleaned_line.endswith('}'):
+                                # Try to find the next part
+                                continue
+                            score_items.append(json.loads(cleaned_line))
+                        except json.JSONDecodeError as e:
+                            print(f"JSON decode error for line: {cleaned_line}")
+                            print(f"Error: {e}")
+                            continue
+        else:
+            # 多行JSON处理
+            score_items = []
+            json_lines = [line for line in json_items if any(key in line.lower() for key in
+                                                             ["relevancy score", "reasons for match", "中文原因",
+                                                              "detailed summary", "详细总结"])]
+
+            for line in json_lines:
+                cleaned_line = re.sub(pattern, "", line).strip()
+                if cleaned_line and (cleaned_line.startswith('{') or '"relevancy score"' in cleaned_line.lower()):
+                    try:
+                        # Handle cases where line might not be complete JSON
+                        if not cleaned_line.endswith('}'):
+                            # Try to find the next part
+                            continue
+                        score_items.append(json.loads(cleaned_line))
+                    except json.JSONDecodeError as e:
+                        print(f"JSON decode error for line: {cleaned_line}")
+                        print(f"Error: {e}")
                         continue
-                    score_items.append(json.loads(cleaned_line))
-                except json.JSONDecodeError as e:
-                    print(f"JSON decode error for line: {cleaned_line}")
-                    print(f"Error: {e}")
-                    continue
 
     except Exception as e:
         print("Error processing response:")
-        pprint.pprint(json_lines)
+        pprint.pprint(json_items)
         raise RuntimeError(f"Failed to parse response: {e}")
 
     print(f"Successfully parsed {len(score_items)} items from response")
-    pprint.pprint(score_items[:2])  # Show first 2 items for debugging
+    if score_items:
+        pprint.pprint(score_items[:1])  # Show first item for debugging
 
     # Extract scores
     scores = []
