@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SMTP邮件发送测试脚本
+SMTP邮件发送测试脚本（支持多收件人）
 用于测试邮件配置和发送digest.html文件
 """
 
@@ -8,12 +8,40 @@ import os
 import sys
 import smtplib
 import ssl
+import re
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from urllib.parse import urlparse
 from pathlib import Path
 from datetime import date
 from dotenv import load_dotenv
+from typing import List, Union
+
+
+def parse_email_addresses(email_string: str) -> List[str]:
+    """
+    解析邮箱地址字符串，支持多种分隔符
+    """
+    if not email_string:
+        return []
+
+    # 用正则表达式分割，支持逗号、分号、空格作为分隔符
+    emails = re.split(r'[,;\s]+', email_string.strip())
+
+    # 过滤空字符串并去除前后空格
+    emails = [email.strip() for email in emails if email.strip()]
+
+    # 简单的邮箱格式验证
+    valid_emails = []
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+    for email in emails:
+        if email_pattern.match(email):
+            valid_emails.append(email)
+        else:
+            print(f"⚠️ 跳过无效邮箱地址: {email}")
+
+    return valid_emails
 
 
 def get_email_config():
@@ -22,7 +50,7 @@ def get_email_config():
     """
     config = {
         'from_email': os.environ.get("FROM_EMAIL"),
-        'to_email': os.environ.get("TO_EMAIL"),
+        'to_emails': os.environ.get("TO_EMAIL"),  # 现在支持多个邮箱
         'sendgrid_key': os.environ.get("SENDGRID_API_KEY"),
         'mail_connection': os.environ.get("MAIL_CONNECTION"),
         'mail_username': os.environ.get("MAIL_USERNAME"),
@@ -31,14 +59,31 @@ def get_email_config():
     return config
 
 
-def send_email_smtp(subject, html_content, from_email, to_email, mail_connection=None, mail_username=None,
-                    mail_password=None):
+def send_email_smtp(subject: str, html_content: str, from_email: str,
+                    to_emails: Union[str, List[str]], mail_connection=None,
+                    mail_username=None, mail_password=None):
     """
-    使用SMTP发送邮件
+    使用SMTP发送邮件到多个收件人
     """
+
+    # 处理收件人邮箱
+    if isinstance(to_emails, str):
+        recipient_list = parse_email_addresses(to_emails)
+    elif isinstance(to_emails, list):
+        recipient_list = to_emails
+    else:
+        raise ValueError("to_emails必须是字符串或列表")
+
+    if not recipient_list:
+        print("❌ 没有有效的收件人邮箱地址")
+        return False
+
+    print(f"📧 准备发送给 {len(recipient_list)} 个收件人:")
+    for i, email in enumerate(recipient_list, 1):
+        print(f"  {i}. {email}")
+
     # 解析连接详情
     if mail_connection:
-        # 解析连接字符串如 smtp://user:pass@server:port
         parsed = urlparse(mail_connection)
         smtp_server = parsed.hostname
         smtp_port = parsed.port
@@ -47,7 +92,6 @@ def send_email_smtp(subject, html_content, from_email, to_email, mail_connection
         use_tls = parsed.scheme == 'smtp+starttls'
         use_ssl = parsed.scheme == 'smtps'
     elif mail_username and mail_password:
-        # Gmail默认配置或手动配置
         smtp_server = "smtp.gmail.com"
         smtp_port = 587
         smtp_username = mail_username
@@ -57,40 +101,64 @@ def send_email_smtp(subject, html_content, from_email, to_email, mail_connection
     else:
         raise ValueError("必须提供 MAIL_CONNECTION 或 MAIL_USERNAME+MAIL_PASSWORD")
 
-    # 创建消息
-    message = MIMEMultipart("alternative")
-    message["Subject"] = subject
-    message["From"] = from_email
-    message["To"] = to_email
-
-    # 添加HTML内容
-    html_part = MIMEText(html_content, "html", "utf-8")
-    message.attach(html_part)
+    successful_sends = []
+    failed_sends = []
 
     try:
         # 创建SMTP会话
         if use_ssl:
-            # SSL (通常端口465)
             context = ssl.create_default_context()
             server = smtplib.SMTP_SSL(smtp_server, smtp_port, context=context)
         else:
-            # STARTTLS (通常端口587) 或普通 (端口25)
             server = smtplib.SMTP(smtp_server, smtp_port)
             if use_tls:
                 context = ssl.create_default_context()
                 server.starttls(context=context)
 
-        # 登录并发送
+        # 登录
         server.login(smtp_username, smtp_password)
-        server.sendmail(from_email, to_email, message.as_string())
+        print("✅ SMTP服务器连接成功")
+
+        # 为每个收件人发送邮件
+        for recipient in recipient_list:
+            try:
+                # 创建邮件消息
+                message = MIMEMultipart("alternative")
+                message["Subject"] = subject
+                message["From"] = from_email
+                message["To"] = recipient
+
+                # 添加HTML内容
+                html_part = MIMEText(html_content, "html", "utf-8")
+                message.attach(html_part)
+
+                # 发送邮件
+                server.sendmail(from_email, [recipient], message.as_string())
+                successful_sends.append(recipient)
+                print(f"✅ 成功发送到: {recipient}")
+
+            except Exception as e:
+                failed_sends.append(recipient)
+                print(f"❌ 发送失败 {recipient}: {e}")
+
         server.quit()
 
-        print(f"✅ SMTP邮件发送成功: {from_email} -> {to_email}")
-        return True
-
     except Exception as e:
-        print(f"❌ SMTP邮件发送失败: {e}")
-        return False
+        print(f"❌ SMTP连接失败: {e}")
+        failed_sends = recipient_list.copy()
+
+    # 打印发送结果统计
+    print(f"\n📊 发送结果统计:")
+    print(f"  ✅ 成功: {len(successful_sends)} 个")
+    print(f"  ❌ 失败: {len(failed_sends)} 个")
+
+    if successful_sends:
+        print(f"  成功发送给: {', '.join(successful_sends)}")
+
+    if failed_sends:
+        print(f"  发送失败: {', '.join(failed_sends)}")
+
+    return len(successful_sends) > 0
 
 
 def check_smtp_config():
@@ -106,12 +174,21 @@ def check_smtp_config():
         print("❌ 缺少 FROM_EMAIL 环境变量")
         return False, config
 
-    if not config['to_email']:
+    if not config['to_emails']:
         print("❌ 缺少 TO_EMAIL 环境变量")
         return False, config
 
     print(f"📧 发件人: {config['from_email']}")
-    print(f"📧 收件人: {config['to_email']}")
+
+    # 解析并显示收件人
+    recipients = parse_email_addresses(config['to_emails'])
+    if not recipients:
+        print("❌ 没有有效的收件人邮箱地址")
+        return False, config
+
+    print(f"📧 收件人 ({len(recipients)} 个):")
+    for i, email in enumerate(recipients, 1):
+        print(f"  {i}. {email}")
 
     # 检查发送方式配置
     has_sendgrid = bool(config['sendgrid_key'])
@@ -184,20 +261,26 @@ def create_test_email():
             .content { padding: 20px; background-color: #f8f9fa; }
             .success { color: #27ae60; font-weight: bold; }
             .info { background-color: #e8f4f8; padding: 15px; border-left: 4px solid #3498db; margin: 10px 0; }
+            .multi-recipient { background-color: #fff3cd; padding: 15px; border-left: 4px solid #f39c12; margin: 10px 0; }
         </style>
     </head>
     <body>
         <div class="header">
-            <h1>🧪 SMTP邮件配置测试</h1>
+            <h1>🧪 SMTP多收件人测试</h1>
         </div>
         <div class="content">
-            <p class="success">✅ 恭喜！您的SMTP邮件配置测试成功！</p>
+            <p class="success">✅ 恭喜！您的SMTP多收件人邮件配置测试成功！</p>
+
+            <div class="multi-recipient">
+                <h3>📧 多收件人功能</h3>
+                <p>此邮件验证了多收件人发送功能正常工作。每个收件人都会收到单独的邮件副本。</p>
+            </div>
 
             <div class="info">
                 <h3>📧 测试信息</h3>
                 <p><strong>测试时间:</strong> ''' + date.today().strftime("%Y年%m月%d日") + '''</p>
-                <p><strong>测试目的:</strong> 验证SMTP邮件发送配置</p>
-                <p><strong>发送方式:</strong> SMTP协议</p>
+                <p><strong>测试目的:</strong> 验证SMTP多收件人邮件发送配置</p>
+                <p><strong>发送方式:</strong> SMTP协议（多收件人支持）</p>
             </div>
 
             <h3>🚀 下一步操作</h3>
@@ -209,17 +292,13 @@ def create_test_email():
             </ol>
 
             <div class="info">
-                <h3>⚙️ ArXiv Digest配置</h3>
-                <p>如需调整论文推荐的配置，请编辑 <code>config.yaml</code> 文件：</p>
-                <ul>
-                    <li>修改 <code>topics</code> 选择感兴趣的研究领域</li>
-                    <li>调整 <code>categories</code> 细化分类</li>
-                    <li>更新 <code>interest</code> 描述您的具体研究兴趣</li>
-                    <li>调整 <code>threshold</code> 控制相关性阈值</li>
-                </ul>
+                <h3>📝 多收件人配置示例</h3>
+                <p>在环境变量或 .env 文件中设置:</p>
+                <pre>TO_EMAIL=user1@example.com,user2@example.com,user3@example.com</pre>
+                <p>支持的分隔符: 逗号(,)、分号(;)、空格</p>
             </div>
 
-            <p><em>此邮件由ArXiv Digest SMTP测试脚本自动生成</em></p>
+            <p><em>此邮件由ArXiv Digest SMTP多收件人测试脚本自动生成</em></p>
         </div>
     </body>
     </html>
@@ -230,7 +309,7 @@ def test_smtp_sending():
     """
     测试SMTP邮件发送
     """
-    print("🚀 开始SMTP邮件发送测试...")
+    print("🚀 开始SMTP多收件人邮件发送测试...")
     print("=" * 50)
 
     # 加载环境变量
@@ -249,7 +328,7 @@ def test_smtp_sending():
     if not has_digest:
         # 使用测试邮件内容
         html_content = create_test_email()
-        subject = "ArXiv Digest - SMTP配置测试成功"
+        subject = "ArXiv Digest - SMTP多收件人配置测试成功"
         print("📧 使用测试邮件内容")
     else:
         subject = date.today().strftime("ArXiv Digest - %Y年%m月%d日")
@@ -267,15 +346,19 @@ def test_smtp_sending():
             subject=subject,
             html_content=html_content,
             from_email=config['from_email'],
-            to_email=config['to_email'],
+            to_emails=config['to_emails'],  # 现在支持多个收件人
             mail_connection=config['mail_connection'],
             mail_username=config['mail_username'],
             mail_password=config['mail_password']
         )
 
         if success:
-            print("\n🎉 SMTP邮件发送测试成功!")
-            print(f"📧 请检查邮箱 {config['to_email']} 是否收到邮件")
+            print("\n🎉 SMTP多收件人邮件发送测试成功!")
+            recipients = parse_email_addresses(config['to_emails'])
+            print(f"📧 请检查以下邮箱是否收到邮件:")
+            for i, email in enumerate(recipients, 1):
+                print(f"  {i}. {email}")
+
             if has_digest:
                 print("📄 已发送实际的ArXiv Digest内容")
             else:
@@ -303,27 +386,19 @@ def print_troubleshooting_tips():
     print("3. 用户名和密码是否正确")
     print("4. 是否需要使用应用专用密码（如Gmail）")
     print("5. 防火墙是否阻止了SMTP端口")
+    print("6. 收件人邮箱地址格式是否正确")
     print()
-    print("常用SMTP配置示例:")
-    print("Gmail:")
-    print("  MAIL_CONNECTION=smtp+starttls://user:pass@smtp.gmail.com:587")
-    print("  或使用 MAIL_USERNAME + MAIL_PASSWORD")
-    print()
-    print("Outlook/Hotmail:")
-    print("  MAIL_CONNECTION=smtp+starttls://user:pass@smtp-mail.outlook.com:587")
-    print()
-    print("QQ邮箱:")
-    print("  MAIL_CONNECTION=smtp+starttls://user:pass@smtp.qq.com:587")
-    print()
-    print("163邮箱:")
-    print("  MAIL_CONNECTION=smtp+starttls://user:pass@smtp.163.com:587")
+    print("多收件人配置示例:")
+    print("TO_EMAIL=user1@gmail.com,user2@outlook.com,user3@company.com")
+    print("TO_EMAIL=\"user1@gmail.com; user2@outlook.com; user3@company.com\"")
+    print("TO_EMAIL=\"user1@gmail.com user2@outlook.com user3@company.com\"")
 
 
 def main():
     """
     主函数
     """
-    print("📧 ArXiv Digest - SMTP邮件发送测试")
+    print("📧 ArXiv Digest - SMTP多收件人邮件发送测试")
     print("=" * 50)
 
     success = test_smtp_sending()

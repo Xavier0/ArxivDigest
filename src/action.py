@@ -16,6 +16,9 @@ import openai
 from relevancy import generate_relevance_score, process_subject_fields
 from download_new_papers import get_papers
 
+import re
+from typing import List, Union
+
 # Hackathon quality code. Don't judge too harshly.
 # Feel free to submit pull requests to improve the code.
 
@@ -383,20 +386,36 @@ def generate_body_enhanced(config):
     return body
 
 
-def send_email_smtp(subject, html_content, from_email, to_email, mail_connection=None, mail_username=None,
+def send_email_smtp(subject, html_content, from_email, to_emails, mail_connection=None, mail_username=None,
                     mail_password=None):
     """
-    Send email using SMTP
+    Send email using SMTP to multiple recipients
 
     Args:
         subject: Email subject
         html_content: HTML content of the email
         from_email: Sender email address
-        to_email: Recipient email address
-        mail_connection: SMTP connection string (smtp://user:pass@server:port or smtp+starttls://user:pass@server:port)
-        mail_username: SMTP username (alternative to mail_connection)
-        mail_password: SMTP password (alternative to mail_connection)
+        to_emails: Recipient email addresses (string or list)
+        mail_connection: SMTP connection string
+        mail_username: SMTP username
+        mail_password: SMTP password
     """
+
+    # 处理收件人邮箱
+    if isinstance(to_emails, str):
+        recipient_list = parse_email_addresses(to_emails)
+    elif isinstance(to_emails, list):
+        recipient_list = to_emails
+    else:
+        raise ValueError("to_emails must be string or list")
+
+    if not recipient_list:
+        print("❌ 没有有效的收件人邮箱地址")
+        return False
+
+    print(f"📧 准备发送给 {len(recipient_list)} 个收件人:")
+    for i, email in enumerate(recipient_list, 1):
+        print(f"  {i}. {email}")
 
     # Parse connection details
     if mail_connection:
@@ -419,15 +438,8 @@ def send_email_smtp(subject, html_content, from_email, to_email, mail_connection
     else:
         raise ValueError("Either MAIL_CONNECTION or MAIL_USERNAME+MAIL_PASSWORD must be provided")
 
-    # Create message
-    message = MIMEMultipart("alternative")
-    message["Subject"] = subject
-    message["From"] = from_email
-    message["To"] = to_email
-
-    # Add HTML content
-    html_part = MIMEText(html_content, "html", "utf-8")
-    message.attach(html_part)
+    successful_sends = []
+    failed_sends = []
 
     try:
         # Create SMTP session
@@ -442,17 +454,50 @@ def send_email_smtp(subject, html_content, from_email, to_email, mail_connection
                 context = ssl.create_default_context()
                 server.starttls(context=context)
 
-        # Login and send
+        # Login
         server.login(smtp_username, smtp_password)
-        server.sendmail(from_email, to_email, message.as_string())
+        print("✅ SMTP服务器连接成功")
+
+        # Send to each recipient
+        for recipient in recipient_list:
+            try:
+                # Create message
+                message = MIMEMultipart("alternative")
+                message["Subject"] = subject
+                message["From"] = from_email
+                message["To"] = recipient
+
+                # Add HTML content
+                html_part = MIMEText(html_content, "html", "utf-8")
+                message.attach(html_part)
+
+                # Send email
+                server.sendmail(from_email, [recipient], message.as_string())
+                successful_sends.append(recipient)
+                print(f"✅ 成功发送到: {recipient}")
+
+            except Exception as e:
+                failed_sends.append(recipient)
+                print(f"❌ 发送失败 {recipient}: {e}")
+
         server.quit()
 
-        print(f"✅ SMTP邮件发送成功: {from_email} -> {to_email}")
-        return True
-
     except Exception as e:
-        print(f"❌ SMTP邮件发送失败: {e}")
-        return False
+        print(f"❌ SMTP连接失败: {e}")
+        failed_sends = recipient_list.copy()
+
+    # Print results
+    print(f"\n📊 发送结果统计:")
+    print(f"  ✅ 成功: {len(successful_sends)} 个")
+    print(f"  ❌ 失败: {len(failed_sends)} 个")
+
+    if successful_sends:
+        print(f"  成功发送给: {', '.join(successful_sends)}")
+
+    if failed_sends:
+        print(f"  发送失败: {', '.join(failed_sends)}")
+
+    return len(successful_sends) > 0
 
 
 def get_email_config():
@@ -588,3 +633,29 @@ if __name__ == "__main__":
     else:
         print("📧 邮件发送: ❌ 未发送或发送失败")
     print("=" * 60)
+
+
+def parse_email_addresses(email_string: str) -> List[str]:
+    """
+    解析邮箱地址字符串，支持多种分隔符
+    """
+    if not email_string:
+        return []
+
+    # 用正则表达式分割，支持逗号、分号、空格作为分隔符
+    emails = re.split(r'[,;\s]+', email_string.strip())
+
+    # 过滤空字符串并去除前后空格
+    emails = [email.strip() for email in emails if email.strip()]
+
+    # 简单的邮箱格式验证
+    valid_emails = []
+    email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+
+    for email in emails:
+        if email_pattern.match(email):
+            valid_emails.append(email)
+        else:
+            print(f"⚠️ 跳过无效邮箱地址: {email}")
+
+    return valid_emails
