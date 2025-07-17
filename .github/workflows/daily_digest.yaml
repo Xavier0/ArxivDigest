@@ -1,0 +1,110 @@
+name: ArXiv Digest Daily
+
+on:
+  # 手动触发
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: '测试模式（不发邮件）'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+  
+  # 定时触发：每天UTC时间09:00（北京时间17:00）执行
+  schedule:
+#    - cron: '0 9 * * 1-5'  # 周一到周五
+    - cron: '0 9 * * *'  # 如果需要每天都执行，取消注释这行
+
+jobs:
+  generate-digest:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout代码
+      uses: actions/checkout@v4
+    
+    - name: 设置Python环境
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+        cache: 'pip'
+    
+    - name: 安装依赖
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 验证环境变量
+      run: |
+        echo "检查必需的环境变量..."
+        if [ -z "$CUSTOM_API_KEY" ]; then
+          echo "❌ CUSTOM_API_KEY未设置"
+          exit 1
+        else
+          echo "✅ CUSTOM_API_KEY已设置"
+        fi
+        
+        # 检查邮件配置（可选）
+        if [ -n "$SENDGRID_API_KEY" ] && [ -n "$FROM_EMAIL" ] && [ -n "$TO_EMAIL" ]; then
+          echo "✅ SendGrid邮件配置完整"
+        elif [ -n "$MAIL_CONNECTION" ] && [ -n "$FROM_EMAIL" ] && [ -n "$TO_EMAIL" ]; then
+          echo "✅ SMTP邮件配置完整"
+        elif [ -n "$MAIL_USERNAME" ] && [ -n "$MAIL_PASSWORD" ] && [ -n "$FROM_EMAIL" ] && [ -n "$TO_EMAIL" ]; then
+          echo "✅ SMTP用户名密码配置完整"
+        else
+          echo "⚠️ 邮件配置不完整，将只生成HTML文件"
+        fi
+      env:
+        CUSTOM_API_KEY: ${{ secrets.CUSTOM_API_KEY }}
+        SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        MAIL_CONNECTION: ${{ secrets.MAIL_CONNECTION }}
+        MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+        MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+        FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+        TO_EMAIL: ${{ secrets.TO_EMAIL }}
+    
+    - name: 运行ArXiv Digest生成
+      run: |
+        echo "开始生成ArXiv Digest..."
+        python src/action.py --config config.yaml
+      env:
+        CUSTOM_API_KEY: ${{ secrets.CUSTOM_API_KEY }}
+        SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
+        MAIL_CONNECTION: ${{ secrets.MAIL_CONNECTION }}
+        MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+        MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+        FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
+        TO_EMAIL: ${{ secrets.TO_EMAIL }}
+    
+    - name: 上传HTML摘要文件
+      uses: actions/upload-artifact@v3
+      with:
+        name: arxiv-digest-html
+        path: digest.html
+        retention-days: 30
+    
+    - name: 上传数据文件
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: arxiv-data
+        path: data/
+        retention-days: 7
+    
+    - name: 显示运行总结
+      run: |
+        echo "==================== 运行总结 ===================="
+        if [ -f "digest.html" ]; then
+          file_size=$(stat -c%s "digest.html")
+          echo "✅ HTML摘要生成成功: ${file_size} bytes"
+        else
+          echo "❌ HTML摘要生成失败"
+        fi
+        
+        echo "📁 数据文件:"
+        ls -la data/ 2>/dev/null || echo "无数据文件"
+        
+        echo "=================================================="
