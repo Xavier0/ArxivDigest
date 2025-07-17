@@ -27,7 +27,7 @@ def test_siliconflow_api():
 
     # 简单测试消息
     payload = {
-        "model": "Pro/deepseek-ai/DeepSeek-R1",
+        "model": "Pro/deepseek-ai/DeepSeek-V3",
         "messages": [
             {
                 "role": "user",
@@ -130,7 +130,7 @@ def test_paper_analysis():
     """
 
     payload = {
-        "model": "Pro/deepseek-ai/DeepSeek-R1",
+        "model": "Pro/deepseek-ai/DeepSeek-V3",
         "messages": [
             {
                 "role": "user",
