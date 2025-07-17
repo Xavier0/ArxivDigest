@@ -1,0 +1,35 @@
+# 测试模式专用配置 - 优化为快速测试
+# 主题设置 - 只选择一个主题以减少API调用
+topics:
+  - "Computer Science"
+
+# 类别设置 - 选择最常见的类别
+categories:
+  - "Machine Learning"
+  - "Artificial Intelligence"
+
+# 相关性阈值 - 设置为0以确保在测试模式下能看到结果
+threshold: 0
+
+# API配置 - 与正常模式相同
+api_config:
+  use_custom_api: true
+  api_url: "https://api.siliconflow.cn/v1/chat/completions"
+  model_name: "Pro/deepseek-ai/DeepSeek-V3"
+  # API密钥通过环境变量CUSTOM_API_KEY设置
+
+# 研究兴趣描述 - 简化的测试版本
+interest: |
+  I am interested in testing the ArXiv Digest system with any papers related to:
+  
+  **Testing Focus:**
+  1. Machine learning methods and algorithms
+  2. Artificial intelligence applications
+  3. Any computer science research
+  
+  **Note:** This is a test configuration designed to quickly validate the system functionality.
+  Please provide a detailed analysis in both English and Chinese for any paper found.
+  
+  **测试说明：**
+  这是一个测试配置，用于快速验证系统功能。
+  请对找到的任何论文进行中英文详细分析。

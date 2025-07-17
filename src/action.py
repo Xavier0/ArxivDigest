@@ -227,11 +227,12 @@ category_map = {
 }
 
 
-def get_papers_from_multiple_topics(topics_config, categories_config):
+def get_papers_from_multiple_topics(topics_config, categories_config, test_mode=False):
     """
     Enhanced function to get papers from multiple topics
     topics_config: list of topic names or single topic name
     categories_config: list of categories or single category
+    test_mode: if True, limit to 1 paper for testing
     """
     all_papers = []
 
@@ -255,8 +256,9 @@ def get_papers_from_multiple_topics(topics_config, categories_config):
         else:
             raise RuntimeError(f"Invalid topic {topic}")
 
-        # Get papers for this topic
-        topic_papers = get_papers(abbr)
+        # Get papers for this topic with limit if in test mode
+        limit = 1 if test_mode else None
+        topic_papers = get_papers(abbr, limit=limit)
 
         # Filter by categories if specified
         if categories_config:
@@ -278,13 +280,19 @@ def get_papers_from_multiple_topics(topics_config, categories_config):
             print(f"  Found {len(topic_papers)} papers (no category filter)")
             all_papers.extend(topic_papers)
 
+        # In test mode, break after getting first paper
+        if test_mode and all_papers:
+            print(f"🧪 Test mode: Limited to {len(all_papers)} paper(s)")
+            break
+
     print(f"Total papers collected: {len(all_papers)}")
     return all_papers
 
 
-def generate_body_enhanced(config):
+def generate_body_enhanced(config, test_mode=False):
     """
     Enhanced function to generate body supporting multiple topics and bilingual output
+    test_mode: if True, limit to 1 paper for testing
     """
     # Support both single topic and multiple topics
     topics_to_search = config.get("topics", config.get("topic"))
@@ -318,22 +326,37 @@ def generate_body_enhanced(config):
         if not custom_api_config.api_key:
             raise RuntimeError("CUSTOM_API_KEY environment variable not set")
 
-    # Get papers from multiple topics
-    papers = get_papers_from_multiple_topics(topics_to_search, categories)
+    # Get papers from multiple topics with test mode support
+    papers = get_papers_from_multiple_topics(topics_to_search, categories, test_mode=test_mode)
 
     if not papers:
         return "No papers found matching the specified criteria."
+
+    # In test mode, add a notice
+    test_notice = ""
+    if test_mode:
+        test_notice = f'''
+        <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; margin-bottom: 20px; border-radius: 5px;">
+            <strong>🧪 测试模式</strong><br>
+            此邮件为ArXiv Digest测试模式生成，仅包含 {len(papers)} 篇论文用于验证功能。<br>
+            <strong>🧪 Test Mode</strong><br>
+            This email is generated in ArXiv Digest test mode, containing only {len(papers)} paper(s) for verification.
+        </div>
+        '''
 
     if interest:
         # Determine model name based on API configuration
         model_name = api_config_dict.get("model_name",
                                          "gpt-3.5-turbo-16k") if custom_api_config else "gpt-3.5-turbo-16k"
 
+        # In test mode, reduce num_paper_in_prompt to 1
+        num_papers_in_prompt = 1 if test_mode else 8
+
         relevancy, hallucination = generate_relevance_score(
             papers,
             query={"interest": interest},
             threshold_score=threshold,
-            num_paper_in_prompt=8,  # Reduced for longer responses
+            num_paper_in_prompt=num_papers_in_prompt,
             model_name=model_name,
             custom_api_config=custom_api_config
         )
@@ -383,7 +406,8 @@ def generate_body_enhanced(config):
             body_parts.append(paper_html)
         body = "".join(body_parts)
 
-    return body
+    # Add test notice if in test mode
+    return test_notice + body
 
 
 def send_email_smtp(subject, html_content, from_email, to_emails, mail_connection=None, mail_username=None,
@@ -525,7 +549,18 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config", help="yaml config file to use", default="config.yaml"
     )
+    parser.add_argument(
+        "--test-mode", action="store_true", help="Test mode - process only 1 paper"
+    )
     args = parser.parse_args()
+
+    # Check for test mode from environment variable as well
+    test_mode = args.test_mode or os.environ.get("ARXIV_DIGEST_TEST_MODE", "false").lower() == "true"
+
+    if test_mode:
+        print("🧪 测试模式已启用 - 只处理1篇论文")
+        print("🧪 Test mode enabled - processing only 1 paper")
+
     with open(args.config, "r") as f:
         config = yaml.safe_load(f)
 
@@ -545,26 +580,27 @@ if __name__ == "__main__":
     # Get email configuration
     email_config = get_email_config()
 
-    # Use enhanced body generation
-    body = generate_body_enhanced(config)
+    # Use enhanced body generation with test mode support
+    body = generate_body_enhanced(config, test_mode=test_mode)
 
     # Add CSS styling for better presentation
-    html_header = '''
+    mode_title = "测试模式 Test Mode" if test_mode else "Analog Circuit Design & Optimization"
+    html_header = f'''
     <html>
     <head>
         <meta charset="UTF-8">
         <style>
-            body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
-            h1 { color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }
-            h3 { color: #2980b9; }
-            a { color: #3498db; text-decoration: none; }
-            a:hover { text-decoration: underline; }
-            .paper { margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }
+            body {{ font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }}
+            h1 {{ color: #2c3e50; border-bottom: 2px solid #3498db; padding-bottom: 10px; }}
+            h3 {{ color: #2980b9; }}
+            a {{ color: #3498db; text-decoration: none; }}
+            a:hover {{ text-decoration: underline; }}
+            .paper {{ margin-bottom: 20px; border-bottom: 1px solid #eee; padding-bottom: 15px; }}
         </style>
     </head>
     <body>
-        <h1>Personalized arXiv Digest - Analog Circuit Design & Optimization Algorithms</h1>
-        <h1>个性化arXiv文献摘要 - 模拟电路设计与优化算法</h1>
+        <h1>Personalized arXiv Digest - {mode_title}</h1>
+        <h1>个性化arXiv文献摘要 - {mode_title}</h1>
     '''
     html_footer = '</body></html>'
 
@@ -575,7 +611,9 @@ if __name__ == "__main__":
 
     # Email sending logic
     email_sent = False
-    subject = date.today().strftime("Personalized arXiv Digest (Analog Circuit Design & Optimization), %d %b %Y")
+    subject_suffix = " [测试模式 Test Mode]" if test_mode else ""
+    subject = date.today().strftime(
+        "Personalized arXiv Digest (Analog Circuit Design & Optimization), %d %b %Y") + subject_suffix
 
     if not email_config['from_email'] or not email_config['to_email']:
         print("📧 未配置发件人或收件人邮箱，跳过邮件发送")
@@ -592,7 +630,8 @@ if __name__ == "__main__":
 
             response = sg.client.mail.send.post(request_body=mail_json)
             if response.status_code >= 200 and response.status_code <= 300:
-                print("✅ SendGrid邮件发送成功!")
+                mode_msg = "测试邮件" if test_mode else "邮件"
+                print(f"✅ SendGrid{mode_msg}发送成功!")
                 email_sent = True
             else:
                 print(f"❌ SendGrid邮件发送失败: ({response.status_code}, {response.text})")
@@ -616,12 +655,19 @@ if __name__ == "__main__":
 
     # Summary
     print("\n" + "=" * 60)
-    print("📊 运行总结:")
+    mode_text = "测试模式" if test_mode else "正常模式"
+    print(f"📊 {mode_text}运行总结:")
     print(f"📄 HTML文件: digest.html (已生成)")
     if email_sent:
-        print(f"📧 邮件发送: ✅ 成功发送到 {email_config['to_email']}")
+        mode_email_text = "测试邮件" if test_mode else "邮件"
+        print(f"📧 {mode_email_text}发送: ✅ 成功发送到 {email_config['to_email']}")
     else:
         print("📧 邮件发送: ❌ 未发送或发送失败")
+
+    if test_mode:
+        print("🧪 测试模式完成 - 仅处理了1篇论文用于功能验证")
+        print("🧪 Test mode completed - processed only 1 paper for functionality verification")
+
     print("=" * 60)
 
 

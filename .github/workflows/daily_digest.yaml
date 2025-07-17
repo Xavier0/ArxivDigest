@@ -5,14 +5,14 @@ on:
   workflow_dispatch:
     inputs:
       test_mode:
-        description: '测试模式（不发邮件）'
+        description: '测试模式（只处理1篇论文）'
         required: false
         default: 'false'
         type: choice
         options:
         - 'true'
         - 'false'
-  
+
   # 定时触发：每天UTC时间09:00（北京时间17:00）执行
   schedule:
 #    - cron: '0 9 * * 1-5'  # 周一到周五
@@ -57,6 +57,13 @@ jobs:
         else
           echo "⚠️ 邮件配置不完整，将只生成HTML文件"
         fi
+        
+        # 显示测试模式状态
+        if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+          echo "🧪 测试模式已启用 - 只处理1篇论文"
+        else
+          echo "🚀 正常模式 - 处理所有相关论文"
+        fi
       env:
         CUSTOM_API_KEY: ${{ secrets.CUSTOM_API_KEY }}
         SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
@@ -68,8 +75,20 @@ jobs:
 
     - name: 运行ArXiv Digest生成
       run: |
-        echo "开始生成ArXiv Digest..."
-        python src/action.py --config config.yaml
+        if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+          echo "🧪 测试模式：生成单论文ArXiv Digest..."
+          # 如果存在测试配置文件则使用，否则使用默认配置
+          if [ -f "test-config.yaml" ]; then
+            echo "📝 使用测试专用配置文件: test-config.yaml"
+            python src/action.py --config test-config.yaml --test-mode
+          else
+            echo "📝 使用默认配置文件: config.yaml"
+            python src/action.py --config config.yaml --test-mode
+          fi
+        else
+          echo "🚀 正常模式：生成完整ArXiv Digest..."
+          python src/action.py --config config.yaml
+        fi
       env:
         CUSTOM_API_KEY: ${{ secrets.CUSTOM_API_KEY }}
         SENDGRID_API_KEY: ${{ secrets.SENDGRID_API_KEY }}
@@ -78,11 +97,12 @@ jobs:
         MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
         FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
         TO_EMAIL: ${{ secrets.TO_EMAIL }}
+        ARXIV_DIGEST_TEST_MODE: ${{ github.event.inputs.test_mode }}
 
     - name: 上传HTML摘要文件
       uses: actions/upload-artifact@v4
       with:
-        name: arxiv-digest-html
+        name: arxiv-digest-html-${{ github.event.inputs.test_mode == 'true' && 'test' || 'full' }}
         path: digest.html
         retention-days: 30
 
@@ -90,16 +110,29 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: arxiv-data
+        name: arxiv-data-${{ github.event.inputs.test_mode == 'true' && 'test' || 'full' }}
         path: data/
         retention-days: 7
-    
+
     - name: 显示运行总结
       run: |
         echo "==================== 运行总结 ===================="
+        if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+          echo "🧪 测试模式运行结果:"
+        else
+          echo "🚀 正常模式运行结果:"
+        fi
+        
         if [ -f "digest.html" ]; then
           file_size=$(stat -c%s "digest.html")
           echo "✅ HTML摘要生成成功: ${file_size} bytes"
+          
+          # 显示HTML内容概要
+          echo "📄 摘要内容概要:"
+          if command -v grep >/dev/null 2>&1; then
+            paper_count=$(grep -c "<h3>" digest.html 2>/dev/null || echo "无法统计")
+            echo "   论文数量: ${paper_count} 篇"
+          fi
         else
           echo "❌ HTML摘要生成失败"
         fi
@@ -107,4 +140,9 @@ jobs:
         echo "📁 数据文件:"
         ls -la data/ 2>/dev/null || echo "无数据文件"
         
+        if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+          echo "📧 测试模式完成 - 请检查邮箱是否收到单论文测试邮件"
+        else
+          echo "📧 正常模式完成 - 请检查邮箱是否收到完整digest"
+        fi
         echo "=================================================="
