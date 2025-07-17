@@ -606,7 +606,7 @@ if __name__ == "__main__":
             subject=subject,
             html_content=full_html,
             from_email=email_config['from_email'],
-            to_email=email_config['to_email'],
+            to_emails=email_config['to_email'],
             mail_connection=email_config['mail_connection'],
             mail_username=email_config['mail_username'],
             mail_password=email_config['mail_password']
