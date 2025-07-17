@@ -516,16 +516,6 @@ def get_email_config():
         'mail_password': os.environ.get("MAIL_PASSWORD"),
     }
     return config
-    """
-    Legacy function maintained for backward compatibility
-    """
-    config = {
-        "topic": topic,
-        "categories": categories,
-        "interest": interest,
-        "threshold": threshold
-    }
-    return generate_body_enhanced(config)
 
 
 if __name__ == "__main__":
