@@ -21,22 +21,22 @@ on:
 jobs:
   generate-digest:
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout代码
       uses: actions/checkout@v4
-    
+
     - name: 设置Python环境
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
-        python-version: '3.12'
+        python-version: '3.10'
         cache: 'pip'
-    
+
     - name: 安装依赖
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-    
+
     - name: 验证环境变量
       run: |
         echo "检查必需的环境变量..."
@@ -65,7 +65,7 @@ jobs:
         MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
         FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
         TO_EMAIL: ${{ secrets.TO_EMAIL }}
-    
+
     - name: 运行ArXiv Digest生成
       run: |
         echo "开始生成ArXiv Digest..."
@@ -78,16 +78,16 @@ jobs:
         MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
         FROM_EMAIL: ${{ secrets.FROM_EMAIL }}
         TO_EMAIL: ${{ secrets.TO_EMAIL }}
-    
+
     - name: 上传HTML摘要文件
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: arxiv-digest-html
         path: digest.html
         retention-days: 30
-    
+
     - name: 上传数据文件
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: arxiv-data
