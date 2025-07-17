@@ -1,12 +1,9 @@
-# 测试模式专用配置 - 优化为快速测试
-# 主题设置 - 只选择一个主题以减少API调用
+# 测试模式专用配置 - 更宽泛的类别设置确保能找到论文
 topics:
   - "Computer Science"
 
-# 类别设置 - 选择最常见的类别
-categories:
-  - "Machine Learning"
-  - "Artificial Intelligence"
+# 类别设置 - 留空以处理所有论文，确保测试模式下有内容
+categories: []
 
 # 相关性阈值 - 设置为0以确保在测试模式下能看到结果
 threshold: 0
@@ -20,16 +17,18 @@ api_config:
 
 # 研究兴趣描述 - 简化的测试版本
 interest: |
-  I am interested in testing the ArXiv Digest system with any papers related to:
+  I am interested in testing the ArXiv Digest system. Please provide relevance scores and analysis for any computer science papers.
   
   **Testing Focus:**
-  1. Machine learning methods and algorithms
-  2. Artificial intelligence applications
-  3. Any computer science research
+  1. Any machine learning or AI research
+  2. Any computer science papers
+  3. Focus on functionality validation
   
-  **Note:** This is a test configuration designed to quickly validate the system functionality.
-  Please provide a detailed analysis in both English and Chinese for any paper found.
+  **Output Requirements:**
+  - Provide brief English summary
+  - Provide brief Chinese summary
+  - Give relevance score based on general CS interest
   
   **测试说明：**
   这是一个测试配置，用于快速验证系统功能。
-  请对找到的任何论文进行中英文详细分析。
+  请对任何找到的计算机科学论文进行简要的中英文分析。

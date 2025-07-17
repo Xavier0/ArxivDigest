@@ -11,7 +11,7 @@ import pytz
 def _download_new_papers(field_abbr):
     NEW_SUB_URL = f'https://arxiv.org/list/{field_abbr}/new'  # https://arxiv.org/list/cs/new
     page = urllib.request.urlopen(NEW_SUB_URL)
-    soup = bs(page)
+    soup = bs(page, features="html.parser")
     content = soup.body.find("div", {'id': 'content'})
 
     # find the first h3 element in content
