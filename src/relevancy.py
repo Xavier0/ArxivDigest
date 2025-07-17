@@ -132,9 +132,36 @@ def find_word_in_string(w, s):
 
 
 def process_subject_fields(subjects):
+    """
+    增强版的subjects字段处理函数
+    修复了处理"Subjects:"前缀和换行符的问题
+    """
+    if not subjects:
+        return []
+
+    # 处理换行符和多余空格
+    subjects = subjects.replace('\n', ' ').strip()
+
+    # 去掉可能的"Subjects:"前缀
+    if subjects.startswith('Subjects:'):
+        subjects = subjects[9:].strip()
+
+    # 按分号分割
     all_subjects = subjects.split(";")
-    all_subjects = [s.split(" (")[0] for s in all_subjects]
-    return all_subjects
+
+    # 清理每个subject
+    cleaned_subjects = []
+    for s in all_subjects:
+        # 去掉前后空格
+        s = s.strip()
+        # 去掉括号及其内容
+        if " (" in s:
+            s = s.split(" (")[0].strip()
+        # 只添加非空的subject
+        if s:
+            cleaned_subjects.append(s)
+
+    return cleaned_subjects
 
 
 def generate_relevance_score(
