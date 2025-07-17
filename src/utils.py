@@ -9,12 +9,44 @@ import json
 import requests
 from typing import Optional, Sequence, Union
 
-import openai
 import tqdm
-from openai import openai_object
 import copy
 
-StrOrOpenAIObject = Union[str, openai_object.OpenAIObject]
+# 兼容新旧版本的OpenAI库
+try:
+    import openai
+    from openai import openai_object
+
+    OPENAI_VERSION = "old"
+except ImportError:
+    try:
+        import openai
+
+        # 新版本OpenAI库没有openai_object
+        openai_object = None
+        OPENAI_VERSION = "new"
+    except ImportError:
+        openai = None
+        openai_object = None
+        OPENAI_VERSION = "none"
+
+
+# 创建兼容的mock对象
+class MockOpenAIChoice:
+    def __init__(self, content="", total_tokens=0):
+        self.message = {"content": content}
+        self.total_tokens = total_tokens
+        # 支持字典式访问
+        self._data = {"total_tokens": total_tokens}
+
+    def __getitem__(self, key):
+        return self._data[key]
+
+    def __setitem__(self, key, value):
+        self._data[key] = value
+
+
+StrOrOpenAIObject = Union[str, MockOpenAIChoice]
 
 openai_org = os.getenv("OPENAI_ORG")
 if openai_org is not None:
@@ -122,8 +154,8 @@ def custom_api_completion(
                 # Convert to OpenAI-like format for compatibility
                 if "choices" in response_data:
                     for choice in response_data["choices"]:
-                        # Create a mock OpenAI choice object
-                        mock_choice = type('MockChoice', (), {})()
+                        # Create a mock OpenAI choice object for compatibility
+                        mock_choice = MockOpenAIChoice()
 
                         if "message" in choice:
                             mock_choice.message = {"content": choice["message"]["content"]}
@@ -135,15 +167,18 @@ def custom_api_completion(
                         # Add usage info if available
                         if "usage" in response_data:
                             mock_choice.total_tokens = response_data["usage"].get("total_tokens", 0)
+                            mock_choice["total_tokens"] = response_data["usage"].get("total_tokens", 0)
                         else:
                             mock_choice.total_tokens = 0
+                            mock_choice["total_tokens"] = 0
 
                         completions.append(mock_choice)
                 else:
                     # Fallback if response format is different
-                    mock_choice = type('MockChoice', (), {})()
+                    mock_choice = MockOpenAIChoice()
                     mock_choice.message = {"content": str(response_data)}
                     mock_choice.total_tokens = 0
+                    mock_choice["total_tokens"] = 0
                     completions.append(mock_choice)
 
                 break
@@ -194,7 +229,11 @@ def openai_completion(
             prompts, decoding_args, custom_api_config, sleep_time, **decoding_kwargs
         )
 
-    # Original OpenAI API logic
+    # For OpenAI API, we need to handle version differences
+    if OPENAI_VERSION == "none":
+        raise RuntimeError("OpenAI library not installed")
+
+    # Original OpenAI API logic with compatibility fixes
     is_chat_model = "gpt-3.5" in model_name or "gpt-4" in model_name
     is_single_prompt = isinstance(prompts, (str, dict))
     if is_single_prompt:
@@ -231,25 +270,56 @@ def openai_completion(
                     **batch_decoding_args.__dict__,
                     **decoding_kwargs,
                 )
+
                 if is_chat_model:
-                    completion_batch = openai.ChatCompletion.create(
-                        messages=[
-                            {"role": "system", "content": "You are a helpful assistant."},
-                            {"role": "user", "content": prompt_batch[0]}
-                        ],
-                        **shared_kwargs
-                    )
+                    if OPENAI_VERSION == "old":
+                        # 旧版本OpenAI API
+                        completion_batch = openai.ChatCompletion.create(
+                            messages=[
+                                {"role": "system", "content": "You are a helpful assistant."},
+                                {"role": "user", "content": prompt_batch[0]}
+                            ],
+                            **shared_kwargs
+                        )
+                        choices = completion_batch.choices
+                        for choice in choices:
+                            choice["total_tokens"] = completion_batch.usage.total_tokens
+                    else:
+                        # 新版本OpenAI API
+                        try:
+                            client = openai.OpenAI(api_key=openai.api_key)
+                            completion_batch = client.chat.completions.create(
+                                messages=[
+                                    {"role": "system", "content": "You are a helpful assistant."},
+                                    {"role": "user", "content": prompt_batch[0]}
+                                ],
+                                **shared_kwargs
+                            )
+                            choices = []
+                            for choice in completion_batch.choices:
+                                mock_choice = MockOpenAIChoice(
+                                    content=choice.message.content,
+                                    total_tokens=completion_batch.usage.total_tokens
+                                )
+                                choices.append(mock_choice)
+                        except Exception as e:
+                            print(f"新版本OpenAI API调用失败: {e}")
+                            print("建议使用自定义API或降级OpenAI库")
+                            raise e
                 else:
-                    completion_batch = openai.Completion.create(prompt=prompt_batch, **shared_kwargs)
+                    if OPENAI_VERSION == "old":
+                        completion_batch = openai.Completion.create(prompt=prompt_batch, **shared_kwargs)
+                        choices = completion_batch.choices
+                        for choice in choices:
+                            choice["total_tokens"] = completion_batch.usage.total_tokens
+                    else:
+                        # 新版本的Completion API使用方式不同
+                        raise RuntimeError("新版本OpenAI库不支持Completion API，请使用chat模型")
 
-                choices = completion_batch.choices
-
-                for choice in choices:
-                    choice["total_tokens"] = completion_batch.usage.total_tokens
                 completions.extend(choices)
                 break
-            except openai.error.OpenAIError as e:
-                logging.warning(f"OpenAIError: {e}.")
+
+            except Exception as e:
                 if "Please reduce your prompt" in str(e):
                     batch_decoding_args.max_tokens = int(batch_decoding_args.max_tokens * 0.8)
                     logging.warning(f"Reducing target length to {batch_decoding_args.max_tokens}, Retrying...")
@@ -262,7 +332,8 @@ def openai_completion(
                     time.sleep(sleep_time)
 
     if return_text:
-        completions = [completion.text for completion in completions]
+        completions = [completion.message["content"] if hasattr(completion, 'message') else completion.text for
+                       completion in completions]
     if decoding_args.n > 1:
         completions = [completions[i: i + decoding_args.n] for i in range(0, len(completions), decoding_args.n)]
     if is_single_prompt:
