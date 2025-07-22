@@ -2,22 +2,35 @@
 
 **ArXiv Digest and Personalized Recommendations using Large Language Models.**
 
-This repo aims to provide a better daily digest for newly published arXiv papers based on your own research interests and natural-language descriptions, using relevancy ratings from GPT.
+This repo aims to provide a better daily digest for newly published arXiv papers based on your own research interests and natural-language descriptions, using relevancy ratings from GPT or other compatible LLMs.
 
 You can try it out on [Hugging Face](https://huggingface.co/spaces/AutoLLM/ArxivDigest) using your own OpenAI API key.
 
 You can also create a daily subscription pipeline to email you the results.
 
+## 🆕 What's New in Enhanced Version
+
+- **🔧 Custom API Support**: Use SiliconFlow, DeepSeek, or any OpenAI-compatible API
+- **🌍 Bilingual Output**: Automatic Chinese and English analysis
+- **📧 Enhanced Email**: SMTP support with multi-recipient capability
+- **🔬 Multi-Topic Search**: Search across multiple arXiv categories simultaneously
+- **🧪 Test Mode**: Quick testing with single paper analysis
+- **⚡ Quick Start Tools**: Automated setup and testing scripts
+- **🎯 Specialized Configs**: Pre-configured for analog circuit design and optimization
+
 ## 📚 Contents
 
 - [What this repo does](#🔍-what-this-repo-does)
   * [Examples](#some-examples)
+- [Quick Start](#🚀-quick-start)
 - [Usage](#💡-usage)
-  * [Running as a github action using SendGrid (Recommended)](#running-as-a-github-action-using-sendgrid-recommended)
+  * [Running as a github action with custom APIs](#running-as-a-github-action-with-custom-apis-recommended)
+  * [Running as a github action using SendGrid](#running-as-a-github-action-using-sendgrid)
   * [Running as a github action with SMTP credentials](#running-as-a-github-action-with-smtp-credentials)
-  * [Running as a github action without emails](#running-as-a-github-action-without-emails)
   * [Running from the command line](#running-from-the-command-line)
   * [Running with a user interface](#running-with-a-user-interface)
+- [Configuration](#⚙️-configuration)
+- [Testing Tools](#🧪-testing-tools)
 - [Roadmap](#✅-roadmap)
 - [Extending and Contributing](#💁-extending-and-contributing)
 
@@ -27,9 +40,21 @@ Staying up to date on [arXiv](https://arxiv.org) papers can take a considerable 
 
 This repository offers a method to curate a daily digest, sorted by relevance, using large language models. These models are conditioned based on your personal research interests, which are described in natural language. 
 
-* You modify the configuration file `config.yaml` with an arXiv Subject, some set of Categories, and a natural language statement about the type of papers you are interested in.  
-* The code pulls all the abstracts for papers in those categories and ranks how relevant they are to your interest on a scale of 1-10 using `gpt-3.5-turbo-16k`.
-* The code then emits an HTML digest listing all the relevant papers, and optionally emails it to you using [SendGrid](https://sendgrid.com). You will need to have a SendGrid account with an API key for this functionality to work.  
+### Enhanced Features:
+
+* **Multi-API Support**: Use OpenAI, SiliconFlow, DeepSeek, or any OpenAI-compatible API
+* **Bilingual Analysis**: Get paper analysis in both English and Chinese
+* **Multi-Topic Search**: Search across multiple arXiv subjects simultaneously (e.g., Computer Science + Electrical Engineering)
+* **Advanced Email**: SendGrid, Gmail SMTP, or custom SMTP with multi-recipient support
+* **Test Mode**: Quick testing with single paper to verify configuration
+* **Smart Categorization**: Automatic filtering by research areas and detailed analysis based on paper type
+
+### Workflow:
+
+* You modify the configuration file `config.yaml` with arXiv subjects, categories, API settings, and a natural language statement about your interests
+* The code pulls abstracts for papers in those categories and ranks relevance (1-10) using your chosen LLM
+* Papers get detailed bilingual analysis based on type (circuit design papers get concise summaries, algorithmic papers get detailed explanations)
+* The code generates an HTML digest and optionally emails it to multiple recipients
 
 ### Testing it out with Hugging Face:
 
@@ -37,70 +62,279 @@ We provide a demo at [https://huggingface.co/spaces/AutoLLM/ArxivDigest](https:/
 
 ![hfexample](./readme_images/hf_example.png)
 
-You can also send yourself an email of the digest by creating a SendGrid account and [API key](https://app.SendGrid.com/settings/api_keys).
-
 ### Some examples of results:
 
-#### Digest Configuration:
-- Subject/Topic: Computer Science
-- Categories: Artificial Intelligence, Computation and Language 
-- Interest: 
-  - Large language model pretraining and finetunings
-  - Multimodal machine learning
-  - Do not care about specific application, for example, information extraction, summarization, etc.
-  - Not interested in paper focus on specific languages, e.g., Arabic, Chinese, etc.
+#### Enhanced Bilingual Configuration:
+- Subjects: Computer Science, Electrical Engineering and Systems Science
+- Categories: Artificial Intelligence, Machine Learning, Systems and Control
+- Interest: Analog circuit design with ML/AI methods, optimization algorithms
+- Output: Bilingual (English + Chinese) detailed analysis
 
 #### Result:
 <p align="left"><img src="./readme_images/example_1.png" width=580 /></p>
 
-#### Digest Configuration:
+#### Multi-Topic Finance Configuration:
 - Subject/Topic: Quantitative Finance
 - Interest: "making lots of money"
 
 #### Result:
 <p align="left"><img src="./readme_images/example_2.png" width=580 /></p>
 
+## 🚀 Quick Start
+
+### Option 1: Automated Setup (Recommended)
+
+1. **Fork and clone the repository**
+2. **Set up API key**:
+   ```bash
+   export CUSTOM_API_KEY='your-siliconflow-or-openai-api-key'
+   # Or create a .env file with: CUSTOM_API_KEY=your-api-key
+   ```
+3. **Run the quick start script**:
+   ```bash
+   python quick_start.py
+   ```
+   This will automatically:
+   - Check your environment and dependencies
+   - Test your API configuration
+   - Optionally test SMTP settings
+   - Run a full digest generation
+
+### Option 2: Manual Testing
+
+1. **Test API connection**:
+   ```bash
+   python test_api.py
+   ```
+2. **Test email configuration** (optional):
+   ```bash
+   python test_smtp.py
+   ```
+3. **Check today's papers**:
+   ```bash
+   python quick_check.py
+   ```
+4. **Generate digest**:
+   ```bash
+   python src/action.py --config config.yaml
+   ```
+
 ## 💡 Usage
 
-### Running as a github action using SendGrid (Recommended).
+### Running as a github action with custom APIs (Recommended)
 
-The recommended way to get started using this repository is to:
+The enhanced way to get started uses custom APIs like SiliconFlow:
+
+1. Fork the repository
+2. Modify `config.yaml` for your research interests
+3. Set the following secrets [(under settings, Secrets and variables, repository secrets)](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-a-repository):
+   - `CUSTOM_API_KEY` From [SiliconFlow](https://siliconflow.cn) or other provider
+   - **Email settings** (choose one):
+     - **SMTP**: `MAIL_CONNECTION`, `FROM_EMAIL`, `TO_EMAIL`
+     - **Gmail**: `MAIL_USERNAME`, `MAIL_PASSWORD`, `FROM_EMAIL`, `TO_EMAIL`
+     - **SendGrid**: `SENDGRID_API_KEY`, `FROM_EMAIL`, `TO_EMAIL`
+4. Manually trigger the action or wait for scheduled execution
+
+### Running as a github action using SendGrid
 
 1. Fork the repository
 2. Modify `config.yaml` and merge the changes into your main branch.
-3. Set the following secrets [(under settings, Secrets and variables, repository secrets)](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-a-repository). See [Advanced Usage](./advanced_usage.md#create-and-fetch-your-api-keys) for more details on how to create and get OpenAi and SendGrid API keys:
+3. Set the following secrets:
    - `OPENAI_API_KEY` From [OpenAI](https://platform.openai.com/account/api-keys)
    - `SENDGRID_API_KEY` From [SendGrid](https://app.SendGrid.com/settings/api_keys)
    - `FROM_EMAIL` This value must match the email you used to create the SendGrid API Key.
-   - `TO_EMAIL`
+   - `TO_EMAIL` (supports multiple recipients: `user1@example.com,user2@example.com`)
 4. Manually trigger the action or wait until the scheduled action takes place.
 
-See [Advanced Usage](./advanced_usage.md) for more details, including step-by-step images, further customization, and alternate usage.
+### Running as a github action with SMTP credentials
+
+An enhanced alternative using SMTP:
+
+1. Fork the repository
+2. Modify `config.yaml` and merge changes
+3. Set the following secrets:
+   - `CUSTOM_API_KEY` or `OPENAI_API_KEY`
+   - **SMTP Connection String**: `MAIL_CONNECTION=smtp://user:password@server:port`
+   - **Or Gmail Credentials**: `MAIL_USERNAME` and `MAIL_PASSWORD`
+   - `FROM_EMAIL` and `TO_EMAIL`
+4. Trigger manually or wait for scheduled execution
+
+### Running from the command line
+
+Enhanced local setup:
+
+1. Install requirements: `pip install -r requirements.txt`
+2. Copy `.env.template` to `.env` and configure your API keys
+3. Modify `config.yaml` for your interests
+4. **Test your setup**:
+   ```bash
+   python test_api.py      # Test API connection
+   python test_smtp.py     # Test email (optional)
+   python quick_check.py   # Check today's papers
+   ```
+5. **Generate digest**:
+   ```bash
+   python src/action.py --config config.yaml
+   # Or test mode: python src/action.py --config config.yaml --test-mode
+   ```
+6. Open `digest.html` in your browser
 
 ### Running with a user interface
 
-To locally run the same UI as the Huggign Face space:
- 
-1. Install the requirements in `src/requirements.txt` as well as `gradio`.
-2. Run `python src/app.py` and go to the local URL. From there you will be able to preview the papers from today, as well as the generated digests.
-3. If you want to use a `.env` file for your secrets, you can copy `.env.template` to `.env` and then set the environment variables in `.env`.
-- Note: These file may be hidden by default in some operating systems due to the dot prefix.
-- The .env file is one of the files in .gitignore, so git does not track it and it will not be uploaded to the repository.
-- Do not edit the original `.env.template` with your keys or your email address, since `.template.env` is tracked by git and editing it might cause you to commit your secrets.
+To locally run the UI:
 
-> **WARNING:** Do not edit and commit your `.env.template` with your personal keys or email address! Doing so may expose these to the world!
+1. Install requirements including `gradio`: `pip install -r requirements.txt gradio`
+2. Run `python src/app.py` and go to the local URL
+3. Configure API keys in the interface or via `.env` file
+
+> **WARNING:** Never commit your API keys! Always use environment variables or the `.env` file.
+
+## ⚙️ Configuration
+
+### Enhanced config.yaml Options
+
+```yaml
+# Multi-topic support
+topics:
+  - "Computer Science" 
+  - "Electrical Engineering and Systems Science"
+
+# Target categories
+categories:
+  - "Artificial Intelligence"
+  - "Machine Learning"
+  - "Systems and Control"
+
+# Relevancy threshold (0-10)
+threshold: 6
+
+# API Configuration (enhanced)
+api_config:
+  use_custom_api: true  # false for OpenAI
+  api_url: "https://api.siliconflow.cn/v1/chat/completions"
+  model_name: "Pro/deepseek-ai/DeepSeek-V3"
+  # API key set via CUSTOM_API_KEY environment variable
+
+# Bilingual research interests
+interest: |
+  Describe your research interests in detail.
+  
+  **For circuit design papers**: Brief methodology summaries
+  **For algorithmic papers**: Detailed theoretical analysis
+  
+  Output in both English and Chinese.
+```
+
+### Environment Variables
+
+Create a `.env` file or set environment variables:
+
+```bash
+# API Configuration (choose one)
+CUSTOM_API_KEY=your-custom-api-key    # SiliconFlow, DeepSeek, etc.
+OPENAI_API_KEY=your-openai-key        # Traditional OpenAI
+
+# Email Configuration (choose one method)
+
+# Method 1: SMTP Connection String
+MAIL_CONNECTION=smtp://user:pass@smtp.gmail.com:587
+FROM_EMAIL=your-email@gmail.com
+TO_EMAIL=recipient1@example.com,recipient2@example.com
+
+# Method 2: Gmail Credentials
+MAIL_USERNAME=your-email@gmail.com
+MAIL_PASSWORD=your-app-password
+FROM_EMAIL=your-email@gmail.com  
+TO_EMAIL=recipient1@example.com,recipient2@example.com
+
+# Method 3: SendGrid
+SENDGRID_API_KEY=your-sendgrid-key
+FROM_EMAIL=your-verified@email.com
+TO_EMAIL=recipient1@example.com,recipient2@example.com
+```
+
+## 🧪 Testing Tools
+
+### API Testing
+```bash
+python test_api.py
+```
+Tests your API configuration and paper analysis functionality.
+
+### Email Testing  
+```bash
+python test_smtp.py
+```
+Tests SMTP configuration with multi-recipient support. Sends either the latest `digest.html` or a test email.
+
+### Paper Analysis
+```bash
+python quick_check.py
+```
+Shows today's available papers and categories to help configure your `config.yaml`.
+
+### Complete Testing
+```bash
+python quick_start.py
+```
+Comprehensive automated testing of all components.
+
+### Test Mode
+```bash
+# Test with single paper
+python src/action.py --config config.yaml --test-mode
+
+# Or use test configuration
+python src/action.py --config test-config.yaml
+```
 
 ## ✅ Roadmap
 
-- [x] Support personalized paper recommendation using LLM.
-- [x] Send emails for daily digest.
-- [ ] Implement a ranking factor to prioritize content from specific authors.
-- [ ] Support open-source models, e.g., LLaMA, Vicuna, MPT etc.
-- [ ] Fine-tune an open-source model to better support paper ranking and stay updated with the latest research concepts..
-
+- [x] Support personalized paper recommendation using LLM
+- [x] Send emails for daily digest
+- [x] **Support custom APIs (SiliconFlow, DeepSeek, etc.)**
+- [x] **Bilingual output (English + Chinese)**
+- [x] **Multi-topic search across arXiv categories**
+- [x] **SMTP email support with multi-recipient**
+- [x] **Test mode and debugging tools**
+- [x] **Specialized configurations for different research areas**
+- [ ] Implement ranking factor to prioritize specific authors
+- [ ] Support fully open-source models (LLaMA, Vicuna, MPT)
+- [ ] Fine-tune models for better paper ranking
+- [ ] Web interface with user accounts
+- [ ] Integration with more academic databases
 
 ## 💁 Extending and Contributing
 
-You may (and are encourage to) modify the code in this repository to suit your personal needs. If you think your modifications would be in any way useful to others, please submit a pull request.
+### Custom API Integration
 
-These types of modifications include things like changes to the prompt, different language models, or additional ways for the digest is delivered to you.
+To add support for new API providers, modify `utils.py`:
+
+```python
+def custom_api_completion(prompts, decoding_args, api_config, **kwargs):
+    # Add your custom API logic here
+    # Return OpenAI-compatible response format
+```
+
+### Language Support
+
+To add new languages, modify:
+- `relevancy_prompt.txt` - Add language-specific instructions
+- `relevancy.py` - Update post-processing for new language fields
+- `action.py` - Update HTML generation
+
+### Email Providers
+
+To add new email providers, extend the email sending functions in `action.py`.
+
+### Specialized Domains
+
+Create domain-specific configurations like `config-biology.yaml`, `config-finance.yaml` with appropriate:
+- Subject combinations
+- Category selections  
+- Interest templates
+- Output formatting
+
+You are encouraged to modify this code for your needs. If your modifications would help others, please submit a pull request!
+
+See [Advanced Usage](./advanced_usage.md) for detailed step-by-step instructions with screenshots.
