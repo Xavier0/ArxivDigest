@@ -19,8 +19,8 @@ threshold: 6
 # API配置 - 支持自定义API端点
 api_config:
   use_custom_api: true  # 设置为false使用OpenAI API
-  api_url: "https://api.siliconflow.cn/v1/chat/completions"
-  model_name: "Pro/deepseek-ai/DeepSeek-V3"
+  api_url: "https://api.deepseek.com/chat/completions"
+  model_name: "deepseek-chat"
   # API密钥通过环境变量CUSTOM_API_KEY设置
 
 # 研究兴趣描述 - 详细说明关注的领域和处理要求

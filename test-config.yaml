@@ -11,8 +11,8 @@ threshold: 0
 # API配置 - 与正常模式相同
 api_config:
   use_custom_api: true
-  api_url: "https://api.siliconflow.cn/v1/chat/completions"
-  model_name: "Pro/deepseek-ai/DeepSeek-V3"
+  api_url: "https://api.deepseek.com/chat/completions"
+  model_name: "deepseek-chat"
   # API密钥通过环境变量CUSTOM_API_KEY设置
 
 # 研究兴趣描述 - 简化的测试版本
